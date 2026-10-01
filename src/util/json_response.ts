@@ -1,0 +1,424 @@
+/**
+ * Standardized JSON response builders for MCP tools and resources.
+ * Ensures consistent, token-efficient output across all endpoints.
+ */
+
+import { ZodError } from "zod";
+
+// Shared per-key operation queues. Unlike a timestamp-only throttle, this also
+// spaces callers that arrive concurrently (common when a model emits a tool batch).
+const rateLimiters = new Map<string, number>();
+const rateLimitTails = new Map<string, Promise<void>>();
+
+/**
+ * Runs an operation exclusively for a key and spaces operation starts.
+ * The queue is released in a finally block so failures cannot wedge later calls.
+ */
+export async function withRateLimit<T>(
+  key: string,
+  operation: () => Promise<T>,
+  intervalMs: number = 1000,
+): Promise<T> {
+  const previous = rateLimitTails.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => { release = resolve; });
+  const tail = previous.catch(() => undefined).then(() => current);
+  rateLimitTails.set(key, tail);
+
+  await previous.catch(() => undefined);
+  try {
+    const now = Date.now();
+    const lastOp = rateLimiters.get(key) || 0;
+    const waitMs = intervalMs - (now - lastOp);
+    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+    rateLimiters.set(key, Date.now());
+    return await operation();
+  } finally {
+    release();
+    if (rateLimitTails.get(key) === tail) rateLimitTails.delete(key);
+  }
+}
+
+/**
+ * Rate limits operations by key. Ensures minimum interval between calls,
+ * including calls that begin concurrently.
+ * @param key - Unique identifier for the rate limit bucket (e.g., "post", "topic")
+ * @param intervalMs - Minimum interval between operations in milliseconds (default: 1000)
+ */
+export async function rateLimit(key: string, intervalMs: number = 1000): Promise<void> {
+  await withRateLimit(key, async () => undefined, intervalMs);
+}
+
+export interface PaginationMeta {
+  total?: number;
+  reported_total?: number | null;
+  pages_fetched?: number;
+  page?: number;
+  per_page?: number;
+  limit?: number;
+  returned?: number;
+  has_more?: boolean;
+  complete?: boolean;
+  truncated?: boolean;
+  truncated_reason?: string;
+  next_cursor?: string | null;
+}
+
+/**
+ * Creates a paginated response with a named collection.
+ */
+export function paginatedResponse<T>(
+  collectionName: string,
+  items: T[],
+  meta: PaginationMeta
+): Record<string, unknown> {
+  return {
+    [collectionName]: items,
+    meta: cleanMeta(meta),
+  };
+}
+
+/**
+ * Removes undefined values from meta objects while preserving meaningful nulls.
+ */
+function cleanMeta(meta: PaginationMeta): PaginationMeta {
+  const clean: PaginationMeta = {};
+  if (meta.total !== undefined) clean.total = meta.total;
+  if (meta.reported_total !== undefined) clean.reported_total = meta.reported_total;
+  if (meta.pages_fetched !== undefined) clean.pages_fetched = meta.pages_fetched;
+  if (meta.page !== undefined) clean.page = meta.page;
+  if (meta.per_page !== undefined) clean.per_page = meta.per_page;
+  if (meta.limit !== undefined) clean.limit = meta.limit;
+  if (meta.returned !== undefined) clean.returned = meta.returned;
+  if (meta.has_more !== undefined) clean.has_more = meta.has_more;
+  if (meta.complete !== undefined) clean.complete = meta.complete;
+  if (meta.truncated !== undefined) clean.truncated = meta.truncated;
+  if (meta.truncated_reason !== undefined) clean.truncated_reason = meta.truncated_reason;
+  if (meta.next_cursor !== undefined) clean.next_cursor = meta.next_cursor;
+  return clean;
+}
+
+/**
+ * Creates a JSON text response for MCP tools.
+ */
+export function jsonResponse(data: unknown): { content: Array<{ type: "text"; text: string }> } {
+  return {
+    content: [{ type: "text", text: JSON.stringify(data) }],
+  };
+}
+
+/**
+ * Creates a structured MCP success while retaining the same value as JSON text
+ * for clients that do not consume structuredContent.
+ */
+export function structuredJsonResponse<T extends Record<string, unknown>>(
+  data: T,
+): {
+  content: Array<{ type: "text"; text: string }>;
+  structuredContent: T;
+} {
+  const text = JSON.stringify(data);
+  // Round-trip once so properties JSON text cannot represent (notably
+  // `undefined`) are absent from structuredContent as well.
+  const structuredContent = JSON.parse(text) as T;
+  return {
+    content: [{ type: "text", text }],
+    structuredContent,
+  };
+}
+
+/**
+ * Creates a JSON error response for MCP tools.
+ */
+export function jsonError(message: string, details?: Record<string, unknown>): { content: Array<{ type: "text"; text: string }>; isError: true } {
+  const error = details ? { error: message, ...details } : { error: message };
+  return {
+    content: [{ type: "text", text: JSON.stringify(error) }],
+    isError: true,
+  };
+}
+
+/**
+ * Creates a JSON error response for Zod validation errors.
+ * Formats issues as a readable list of field errors.
+ */
+export function zodError(error: ZodError): { content: Array<{ type: "text"; text: string }>; isError: true } {
+  const issues = error.issues.map(issue => ({
+    path: issue.path.join(".") || "(root)",
+    message: issue.message,
+  }));
+  return jsonError("Validation failed", { issues });
+}
+
+/**
+ * Type guard to check if an error is a ZodError.
+ */
+export function isZodError(error: unknown): error is ZodError {
+  return error instanceof ZodError;
+}
+
+/**
+ * Category permission types from CategoryGroup model.
+ * Used in category `perms` array: [{gid, perm}]
+ * - 1 = full (create topics, reply, see)
+ * - 2 = create_post (reply, see)
+ * - 3 = readonly (see only)
+ */
+
+/**
+ * Transforms raw Discourse category data to lean migration-ready format.
+ */
+export interface LeanCategory {
+  id: number;
+  name: string;
+  slug: string;
+  /** Legacy alias retained for compatibility; prefer parent_category_id. */
+  pid: number | null;
+  parent_category_id: number | null;
+  read_restricted: boolean;
+  topic_count: number;
+  post_count: number;
+  perms?: Array<{ gid: number; perm: number }>; // Only populated with admin auth
+}
+
+export function transformCategory(raw: any): LeanCategory {
+  if (
+    !raw ||
+    !Number.isInteger(raw.id) ||
+    raw.id <= 0 ||
+    typeof raw.name !== "string" ||
+    raw.name.length === 0 ||
+    typeof raw.slug !== "string" ||
+    raw.slug.length === 0
+  ) {
+    throw new Error("Malformed category: expected positive integer id and nonempty name/slug");
+  }
+
+  const parentCategoryId = Number.isInteger(raw.parent_category_id)
+    ? raw.parent_category_id
+    : null;
+  let perms: Array<{ gid: number; perm: number }> | undefined = undefined;
+  
+  if (Array.isArray(raw.group_permissions) && raw.group_permissions.length > 0) {
+    perms = raw.group_permissions.map((gp: any) => ({
+      gid: gp.group_id ?? gp.gid ?? 0,
+      perm: gp.permission_type ?? gp.perm ?? 1,
+    }));
+  }
+  // Note: Without admin auth, group_permissions is not included in /site.json
+  // We intentionally omit perms rather than return misleading gid:0 data
+
+  const result: LeanCategory = {
+    id: raw.id,
+    name: raw.name,
+    slug: raw.slug,
+    pid: parentCategoryId,
+    parent_category_id: parentCategoryId,
+    read_restricted: raw.read_restricted ?? false,
+    topic_count: raw.topic_count ?? 0,
+    post_count: raw.post_count ?? 0,
+  };
+  
+  if (perms) {
+    result.perms = perms;
+  }
+  
+  return result;
+}
+
+/**
+ * Transforms raw Discourse group data to lean format.
+ * 
+ * Visibility/access levels (0-4):
+ *   0 = public, 1 = logged_on_users, 2 = members, 3 = staff, 4 = owners
+ */
+export interface LeanGroup {
+  id: number;
+  name: string;
+  automatic: boolean;
+  user_count: number | null;
+  vis: number;
+  members_vis: number;
+  mention: number;
+  msg: number;
+  public_admission: boolean;
+  public_exit: boolean;
+  allow_membership_requests: boolean;
+}
+
+export function transformGroup(raw: any): LeanGroup {
+  return {
+    id: raw.id,
+    name: raw.name,
+    automatic: raw.automatic ?? false,
+    user_count: raw.user_count ?? null,
+    vis: raw.visibility_level ?? 0,
+    members_vis: raw.members_visibility_level ?? 0,
+    mention: raw.mentionable_level ?? 0,
+    msg: raw.messageable_level ?? 0,
+    public_admission: raw.public_admission ?? false,
+    public_exit: raw.public_exit ?? false,
+    allow_membership_requests: raw.allow_membership_requests ?? false,
+  };
+}
+
+/**
+ * Transforms raw Discourse tag data to lean format.
+ * Note: Discourse tags use `name` as the primary identifier (used in filters).
+ * The `id` field is the numeric database ID.
+ */
+export interface LeanTag {
+  id: number;
+  name: string;
+  count: number;
+}
+
+export function transformTag(raw: any): LeanTag {
+  return {
+    id: raw.id ?? 0,
+    name: raw.name ?? raw.text ?? String(raw.id),
+    count: raw.count ?? raw.topic_count ?? 0,
+  };
+}
+
+/**
+ * Transforms raw Discourse chat channel data to lean format.
+ */
+export interface LeanChatChannel {
+  id: number;
+  title: string;
+  slug: string;
+  status: string;
+  members_count: number;
+  description: string | null;
+}
+
+export function transformChatChannel(raw: any): LeanChatChannel {
+  return {
+    id: raw.id,
+    title: raw.title || `Channel ${raw.id}`,
+    slug: raw.slug || String(raw.id),
+    status: raw.status || "open",
+    members_count: raw.memberships_count ?? raw.members_count ?? 0,
+    description: raw.description || null,
+  };
+}
+
+/**
+ * Transforms raw Discourse user chat channel data to lean format.
+ * Includes tracking data (unread/mentions).
+ */
+export interface LeanUserChatChannel {
+  id: number;
+  title: string;
+  slug: string | null;
+  status: string;
+  unread_count: number;
+  mention_count: number;
+}
+
+export function transformUserChatChannel(raw: any, tracking?: any): LeanUserChatChannel {
+  const channelTracking = tracking?.channel_tracking?.[raw.id] || {};
+  return {
+    id: raw.id,
+    title: raw.title || `Channel ${raw.id}`,
+    slug: raw.slug || null,
+    status: raw.status || "open",
+    unread_count: channelTracking.unread_count ?? 0,
+    mention_count: channelTracking.mention_count ?? 0,
+  };
+}
+
+/**
+ * Transforms raw Discourse draft data to lean format.
+ */
+export interface LeanDraft {
+  draft_key: string;
+  sequence: number;
+  title: string | null;
+  category_id: number | null;
+  created_at: string | null;
+  reply_preview: string | null;
+}
+
+export function transformDraft(raw: any): LeanDraft {
+  let replyPreview: string | null = null;
+  if (raw.data) {
+    try {
+      const parsed = JSON.parse(raw.data);
+      if (parsed.reply) {
+        replyPreview = parsed.reply.length > 200 ? parsed.reply.slice(0, 200) + "..." : parsed.reply;
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+  return {
+    draft_key: raw.draft_key,
+    sequence: raw.sequence ?? 0,
+    title: raw.title || null,
+    category_id: raw.category_id || null,
+    created_at: raw.created_at || null,
+    reply_preview: replyPreview,
+  };
+}
+
+/**
+ * Data Explorer types and transforms.
+ * Used for query management.
+ */
+
+export interface LeanQuery {
+  id: number;
+  name: string;
+  description: string | null;
+  username: string | null;
+  group_ids: number[];
+  last_run_at: string | null;
+}
+
+export interface LeanQueryDetail extends LeanQuery {
+  sql: string;
+  param_info: Array<{
+    identifier: string;
+    type: string;
+    default: string | null;
+    nullable: boolean;
+  }>;
+}
+
+export function transformQuery(raw: any): LeanQuery {
+  return {
+    id: raw.id,
+    name: raw.name || "",
+    description: raw.description || null,
+    username: raw.username || raw.user?.username || null,
+    group_ids: Array.isArray(raw.group_ids) ? raw.group_ids : [],
+    last_run_at: raw.last_run_at || null,
+  };
+}
+
+export function transformQueryDetail(raw: any): LeanQueryDetail {
+  const base = transformQuery(raw);
+  return {
+    ...base,
+    sql: raw.sql || "",
+    param_info: Array.isArray(raw.param_info)
+      ? raw.param_info.map((p: any) => ({
+          identifier: p.identifier || "",
+          type: p.type || "string",
+          default: p.default ?? null,
+          nullable: p.nullable === true,
+        }))
+      : [],
+  };
+}
+
+export interface QueryRunResult {
+  columns: string[];
+  rows: unknown[][];
+  result_count: number;
+  duration_ms: number;
+  explain?: string;
+  relations?: Record<string, unknown>;
+}

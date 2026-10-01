@@ -1,0 +1,9 @@
+FROM node:24.21.0-bookworm-slim
+RUN npm install --global pnpm@10.14.0
+WORKDIR /src
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+COPY --chown=node:node . .
+RUN pnpm build
+USER node
+CMD ["sh", "-c", "pnpm test && node scripts/downstream-surface.mjs"]

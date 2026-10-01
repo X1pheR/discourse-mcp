@@ -1,0 +1,56 @@
+{
+  "name": "@discourse/mcp",
+  "version": "0.3.1-x1pher.1",
+  "description": "Community-maintained Discourse MCP downstream with configurable site allowlisting and tool-only surface",
+  "author": "Discourse",
+  "license": "MIT",
+  "keywords": [
+    "discourse",
+    "mcp"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/X1pheR/discourse-mcp.git"
+  },
+  "homepage": "https://github.com/X1pheR/discourse-mcp",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "discourse-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "pnpm build",
+    "dev": "node --enable-source-maps dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "clean": "rm -rf dist",
+    "sync:fixtures": "node scripts/sync-fixtures.mjs",
+    "test": "node --test dist/test/**/*.js"
+  },
+  "files": [
+    "dist/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^20.19.43",
+    "eslint": "^9.39.5",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.67.0"
+  },
+  "packageManager": "pnpm@10.14.0"
+}
