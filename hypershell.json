@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "Discourse MCP",
+  "category": "Knowledge",
+  "kind": "mcp-server",
+  "upstream": {
+    "repository": "discourse/discourse-mcp",
+    "reason": "Adds fail-closed site allowlisting and a restricted anonymous research profile not currently provided upstream."
+  }
+}
