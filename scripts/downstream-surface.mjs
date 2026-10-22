@@ -5,7 +5,7 @@ const transport = new StdioClientTransport({
   command: process.execPath,
   args: ['dist/index.js', '--transport', 'stdio', '--toolsets', 'search,topics', '--tools_mode', 'discourse_api_only', '--log_level', 'error'],
   env: { PATH: process.env.PATH, HYPERSHELL_REQUIRE_SITE_ALLOWLIST: 'true',
-    HYPERSHELL_DISCOURSE_ALLOWED_SITES: 'https://example.com', HYPERSHELL_DISCOURSE_TOOL_ONLY_SURFACE: 'true' }
+    HYPERSHELL_DISCOURSE_ALLOWED_SITES: 'https://example.com' }
 });
 const client = new Client({ name: 'downstream-acceptance', version: '1.0.0' });
 try {
@@ -18,14 +18,12 @@ try {
   assert.equal(names.length, 8, 'DSC-03 exactly eight tools');
   assert.ok(names.includes('discourse_select_site'));
   for (const tool of tools) assert.notEqual(tool.annotations?.readOnlyHint, false, tool.name);
-  async function absentSurface(call, key) {
-    try { assert.deepEqual((await call())[key], [], 'DSC-02 no registered ' + key); }
-    catch (error) { if (error.code !== -32601) throw error; }
-  }
-  await absentSurface(() => client.listResources(), 'resources');
-  await absentSurface(() => client.listPrompts(), 'prompts');
+  const resources = await client.listResources();
+  const prompts = await client.listPrompts();
+  assert.ok(resources.resources.length > 0, 'upstream resources available');
+  assert.ok(prompts.prompts.length > 0, 'upstream prompts available');
   const denied = await client.callTool({ name: 'discourse_select_site', arguments: { site: 'https://denied.example' } });
   assert.equal(denied.isError, true, 'DSC-01 disallowed site rejected');
   assert.match(JSON.stringify(denied), /not in the configured allowlist/);
-  console.log('DSC-01/02/03 process surface PASS');
+  console.log('DSC-01/02/03 upstream MCP process surface PASS');
 } finally { await client.close(); }

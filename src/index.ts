@@ -371,14 +371,9 @@ async function main() {
     showEmails
   });
 
-  const toolOnlySurface = process.env.HYPERSHELL_DISCOURSE_TOOL_ONLY_SURFACE === "true";
-  if (!toolOnlySurface) {
-    // Register MCP resources (URI-addressable read-only data)
-    registerAllResources(server, { siteState, logger }, { toolsets: config.toolsets });
-
-    // Register MCP prompts (guided workflows)
-    registerAllPrompts(server, { siteState, logger });
-  }
+  // Preserve the normal upstream MCP resources and prompts surface.
+  registerAllResources(server, { siteState, logger }, { toolsets: config.toolsets });
+  registerAllPrompts(server, { siteState, logger });
 
   // If tethered and remote tool discovery is enabled, discover now
   if (config.site && config.tools_mode !== "discourse_api_only") {

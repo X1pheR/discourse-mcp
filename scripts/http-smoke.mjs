@@ -6,7 +6,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 const proc = spawn(process.execPath, ['dist/index.js', '--transport', 'http', '--port', '3000',
   '--toolsets', 'search,topics', '--tools_mode', 'discourse_api_only', '--log_level', 'error'], {
   env: { ...process.env, HYPERSHELL_REQUIRE_SITE_ALLOWLIST: 'true',
-    HYPERSHELL_DISCOURSE_ALLOWED_SITES: 'https://example.com', HYPERSHELL_DISCOURSE_TOOL_ONLY_SURFACE: 'true' },
+    HYPERSHELL_DISCOURSE_ALLOWED_SITES: 'https://example.com' },
   stdio: ['ignore', 'ignore', 'inherit']
 });
 const timer = setTimeout(() => { proc.kill('SIGKILL'); process.exit(1); }, 30000);
@@ -21,6 +21,8 @@ try {
   assert.ok(ready, 'DSC-05 packaged HTTP health');
   await client.connect(new StreamableHTTPClientTransport(new URL('http://127.0.0.1:3000/mcp')));
   assert.equal((await client.listTools()).tools.length, 8);
+  assert.ok((await client.listResources()).resources.length > 0);
+  assert.ok((await client.listPrompts()).prompts.length > 0);
   const denied = await client.callTool({ name: 'discourse_select_site', arguments: { site: 'https://denied.example' } });
   assert.equal(denied.isError, true);
   assert.match(JSON.stringify(denied), /not in the configured allowlist/);
