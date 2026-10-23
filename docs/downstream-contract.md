@@ -8,7 +8,7 @@ intentional external behavior change.
 | ID | Required behavior | Acceptance |
 | --- | --- | --- |
 | DSC-01 | When HYPERSHELL_REQUIRE_SITE_ALLOWLIST=true, absent or empty accepted sites MUST abort construction/startup. A configured allowlist MUST reject every unlisted normalized site before an HTTP request. | Positive normalization and denied-origin unit tests; missing/empty startup tests. |
-| DSC-02 | When HYPERSHELL_DISCOURSE_TOOL_ONLY_SURFACE=true, MCP resources and prompts MUST remain unregistered. | Actual stdio MCP initialization and list-tools/resources/prompts acceptance. |
+| DSC-02 | Normal upstream MCP resources and prompts remain registered alongside the eight accepted tools. | Actual stdio and packaged HTTP MCP list-tools/resources/prompts acceptance. |
 | DSC-03 | Anonymous search,topics plus discourse_api_only MUST expose exactly the existing eight non-writing tools. No remote discovery or allow_writes is introduced. | Packaged process surface acceptance, annotations and exact tool set. |
 | DSC-04 | The reviewed fast-uri security resolution MUST remain in the frozen dependency graph; the initial 3.1.6 baseline MUST use fixed 3.1.7 before release because the current security gate reports two applicable HIGH findings. | Frozen install, lock inspection and dependency/image scan. |
 | DSC-05 | Existing non-root HTTP packaging and stateful-session behavior MUST remain compatible with the existing independent bridge. | Canonical build and HTTP health/session smoke in an isolated candidate; production gateway acceptance before any cutover completion. |

@@ -32,17 +32,6 @@ This inline register is the product-owned logical-patch projection used by SDLC-
       "pr": null
     },
     {
-      "id": "DC-P02",
-      "kind": "upstream",
-      "scope": "Optional tool-only MCP surface",
-      "local_commits": [
-        "bb3415b"
-      ],
-      "checked_on": "2026-10-10",
-      "issue": null,
-      "pr": null
-    },
-    {
       "id": "DC-P03",
       "kind": "upstream",
       "scope": "fast-uri security lock resolution",
@@ -97,7 +86,7 @@ This inline register is the product-owned logical-patch projection used by SDLC-
   policy. No generic upstream issue/PR is assumed for Hypershell-only
   details, and no product ADR approval has been granted.
 
-Under the canonical Maintained Downstream standard, **all four rows stay
+Under the canonical Maintained Downstream standard, **the three remaining rows stay
 nonconformant**. Disabled GitHub Issues do not silently waive the mandatory
 upstream issue + linked PR contract. An operator must separately dispose
 of the exact upstream contribution-channel blocker, select a verified
@@ -105,6 +94,8 @@ maintainer-supported contribution pathway if one becomes available, or
 explicitly approve narrowly scoped product divergence with a valid product
 ADR and review/exit date. No such approval is recorded here. Do not publish
 a new downstream release or pretend the unresolved rows are conformant.
+
+**DC-P02 candidate retirement:** the optional Hypershell tools-only suppression was removed in local commit `d0d15921c1c23d79a579eccf1d00736f148f78ac`. Normal MCP resources and prompts are restored; the eight existing tools remain. Source tests and packaged stdio/HTTP smoke tests passed. This is not yet a published downstream release or production adoption; the previous DC-P02 contribution-channel history below is retained as historical context.
 
 ## Convergence lifecycle
 
@@ -124,14 +115,12 @@ Before an approved disposition can clear a gate, the operator-owned product ADR 
 The existing shared repository/release lifecycle invokes the single canonical SDLC checker before managed tag/publication/recovery transitions. Direct public workflow integration remains incomplete: the checker source is private and repository-scoped public GitHub tokens cannot read it. No production credentials, privileged public runner, second checker or extra service was introduced.
 
 
-## Unapproved functional disposition proposals — DC-P01/P02/P03
+## Accepted operator direction — DC-P01/P02/P03 (SDLC-09 decision 6, 2026-10-15)
 
-These are separate operator-decision proposals, not approved ADRs. Exact inspected source owner: bb4b51b630ebb8cf167ae7fd8f4e17706110547a. The existing observed has_issues=false/has_discussions=false and issue-create HTTP410 response block the required official issue/PR pair. This is a contribution-channel refusal, not evidence that maintainers rejected the individual implementations. No alternate channel, account or tool will be used to bypass it.
+Option D supersedes the earlier proposal to retain all three by default. The target is upstream-first behavior with only demonstrated product-specific exceptions, without weakening current tests or inventing upstream acceptance. The official upstream Issues/Discussions channel was unavailable (HTTP 410); this is not a maintainer rejection and must not be bypassed. Existing structural blockers stay until exact accepted patch retirement or scope-matched approved disposition.
 
-DC-P01: proposed scope is configuredAllowedSites and the optional exact-site allowlist admission in src/site/state.ts, including required-absent/empty fail-closed behavior and downstream_allowlist.test.ts. Existing --site single-site pinning is not multi-site allowlist equivalence. Imported tool/application code and distribution DC-P04 are excluded. Retention needs an exact operator ADR; removal needs equivalent released confinement and consumer acceptance.
+- DC-P01 site allowlist: prefer removal of configuredAllowedSites and its admission/tests if the current actual Discourse deployment and consumers can use upstream --site pinning without loss of a demonstrated multi-site security requirement. Verify site confinement with real consumer configuration and negative tests first. If this fails, preserve the patch/blocker for a separate operator trade-off.
+- DC-P02 tools-only surface: prefer removal of HYPERSHELL_DISCOURSE_TOOL_ONLY_SURFACE suppression if the actual MCP clients and trust boundary accept standard upstream resources/prompts. Validate advertised tools/resources/prompts, credentials and consumer behavior before removal. Do not assume resources/prompts are inherently unsafe or that their exposure is accepted without evaluation.
+- DC-P03 fast-uri: provisionally retain only the exact 3.1.7 integrity-pinned lock resolution while upstream lockfiles still resolve 3.1.5 and equivalent security resolution has not been demonstrated. Re-evaluate at the next suitable upstream release with dependency/security scan and source tests; retire this delta once a suitable upstream artifact proves equal protection. This is not a blanket security waiver or an assertion of full-suite acceptance.
 
-DC-P02: proposed scope is HYPERSHELL_DISCOURSE_TOOL_ONLY_SURFACE admission around resource/prompt registration in src/index.ts. Native tools remain available with the flag; toolset/API-only tool discovery does not establish equivalent protocol resource/prompt suppression. Imported tool definitions and distribution DC-P04 are excluded. Retention needs an exact operator ADR until a supported issue channel and upstream equivalent exist.
-
-DC-P03: proposed scope is only the retained fast-uri3.1.7 lock resolution and matching package integrity, rather than the entire initial imported commit. Upstream lockfiles currently documented here resolve3.1.5. Prefer retirement against a suitable integrity-pinned official release with equal security behavior; otherwise an operator ADR must expressly cover this dependency delta. This proposal does not approve blanket security exceptions or claim current full-suite acceptance.
-
-Review when the official contribution channel changes, on the next suitable upstream release, or2026-11-14, whichever occurs first. The operator must record separate exact scopes, rationale, owner, existing source-owned acceptance evidence and exit triggers. All three machine rows remain unpaired/nonconformant and DC-P04 remains separately unapproved. No new release, production change or fork retirement is authorized.
+Review upon a new official contribution channel, next suitable upstream release, or by 2026-11-14, whichever occurs first. No downstream release, production activation, fork retirement or gate waiver is approved. Distribution DC-P04 remains separately pending.
